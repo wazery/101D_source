@@ -34,10 +34,18 @@ jobs:
           mkdir -p ~/flask-app
           cd ~/flask-app
           
-          # Stop existing app
+          # Force stop and remove any existing containers and images
+          echo "🧹 Cleaning up existing containers..."
           docker stop flask-app || true
           docker rm flask-app || true
+          
+          # Also stop any containers using port 8080
+          docker ps --filter "publish=8080" -q | xargs -r docker stop
+          docker ps -a --filter "publish=8080" -q | xargs -r docker rm
+          
+          # Clean up unused images
           docker rmi flask-s3-gallery:latest || true
+          docker system prune -f
       
     - name: Copy files to staging server
       if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
@@ -78,6 +86,14 @@ jobs:
           echo "🔨 Building Docker image..."
           docker build -t flask-s3-gallery:latest .
           
+          # Check if port 8080 is free
+          echo "🔍 Checking if port 8080 is available..."
+          if netstat -tlnp | grep :8080; then
+            echo "❌ Port 8080 is still in use, killing processes..."
+            sudo fuser -k 8080/tcp || true
+            sleep 2
+          fi
+          
           # Run new container
           echo "🚀 Starting container..."
           docker run -d \
@@ -109,10 +125,18 @@ jobs:
           mkdir -p ~/flask-app
           cd ~/flask-app
           
-          # Stop existing app
+          # Force stop and remove any existing containers and images
+          echo "🧹 Cleaning up existing containers..."
           docker stop flask-app || true
           docker rm flask-app || true
+          
+          # Also stop any containers using port 80
+          docker ps --filter "publish=80" -q | xargs -r docker stop
+          docker ps -a --filter "publish=80" -q | xargs -r docker rm
+          
+          # Clean up unused images
           docker rmi flask-s3-gallery:latest || true
+          docker system prune -f
 
     - name: Copy files to production server
       if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
@@ -152,6 +176,14 @@ jobs:
           # Build new image
           echo "🔨 Building Docker image..."
           docker build -t flask-s3-gallery:latest .
+          
+          # Check if port 80 is free
+          echo "🔍 Checking if port 80 is available..."
+          if netstat -tlnp | grep :80; then
+            echo "❌ Port 80 is still in use, killing processes..."
+            sudo fuser -k 80/tcp || true
+            sleep 2
+          fi
           
           # Run new container
           echo "🚀 Starting container..."
