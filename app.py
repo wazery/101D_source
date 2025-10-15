@@ -7,10 +7,11 @@ Flask S3 Gallery Application
 
 import os
 import boto3
-from flask import Flask, render_template, request, flash, redirect, url_for, jsonify
+from flask import Flask, render_template, request, flash, redirect, url_for, jsonify, Response
 from werkzeug.utils import secure_filename
 from botocore.exceptions import ClientError, NoCredentialsError
 import uuid
+import io
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -63,21 +64,9 @@ def get_s3_client():
         return None
 
 def generate_s3_url(bucket_name, key, use_presigned=False):
-    """Generate S3 URL - public or presigned based on configuration"""
-    if use_presigned:
-        s3_client = get_s3_client()
-        if s3_client:
-            return s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket_name, 'Key': key},
-                ExpiresIn=7200  # 2 hours - longer for better user experience
-            )
-    
-    # Public URL format based on region
-    if AWS_REGION == 'us-east-1':
-        return f"https://{bucket_name}.s3.amazonaws.com/{key}"
-    else:
-        return f"https://{bucket_name}.s3.{AWS_REGION}.amazonaws.com/{key}"
+    """Generate S3 URL - serve through Flask to avoid CORS issues"""
+    # Always serve through Flask to eliminate CORS/ORB issues
+    return url_for('serve_image', filename=key, _external=True)
 
 def create_bucket_if_not_exists():
     """Create S3 bucket if it doesn't exist"""
@@ -131,8 +120,8 @@ def upload_file_to_s3(file, filename):
             }
         )
         
-        # Generate S3 URL (use presigned URLs to avoid CORS/bucket policy issues)
-        s3_url = generate_s3_url(S3_BUCKET_NAME, unique_filename, use_presigned=True)
+        # Generate S3 URL (serve through Flask to avoid CORS issues)
+        s3_url = generate_s3_url(S3_BUCKET_NAME, unique_filename)
         return True, s3_url
     
     except ClientError as e:
@@ -155,8 +144,8 @@ def list_s3_images():
                 # Only include image files
                 filename = obj['Key']
                 if any(filename.lower().endswith(ext) for ext in ['png', 'jpg', 'jpeg', 'gif', 'webp']):
-                    # Generate S3 URL (use presigned URLs to avoid CORS/bucket policy issues)
-                    image_url = generate_s3_url(S3_BUCKET_NAME, filename, use_presigned=True)
+                    # Generate S3 URL (serve through Flask to avoid CORS issues)
+                    image_url = generate_s3_url(S3_BUCKET_NAME, filename)
                     
                     images.append({
                         'filename': filename,
@@ -218,6 +207,39 @@ def upload():
             return redirect(request.url)
     
     return render_template('upload.html')
+
+@app.route('/image/<path:filename>')
+def serve_image(filename):
+    """Serve images from S3 through Flask to avoid CORS issues"""
+    s3_client = get_s3_client()
+    if not s3_client:
+        return "S3 client error", 500
+    
+    try:
+        # Download image from S3
+        response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=filename)
+        
+        # Get content type
+        content_type = response.get('ContentType', 'image/jpeg')
+        
+        # Stream the image
+        image_data = response['Body'].read()
+        
+        return Response(
+            image_data,
+            mimetype=content_type,
+            headers={
+                'Cache-Control': 'public, max-age=3600',  # Cache for 1 hour
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+        
+    except ClientError as e:
+        print(f"Error serving image {filename}: {e}")
+        return "Image not found", 404
+    except Exception as e:
+        print(f"Unexpected error serving image {filename}: {e}")
+        return "Server error", 500
 
 @app.route('/health')
 def health_check():
