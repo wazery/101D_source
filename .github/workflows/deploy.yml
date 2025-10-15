@@ -30,9 +30,9 @@ jobs:
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         script: |
-          # Create app directory
-          mkdir -p /opt/flask-app
-          cd /opt/flask-app
+          # Create app directory in user home
+          mkdir -p ~/flask-app
+          cd ~/flask-app
           
           # Stop existing app
           docker stop flask-app || true
@@ -47,7 +47,7 @@ jobs:
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
-        target: "/opt/flask-app"
+        target: "flask-app"
 
     - name: Build and run on staging
       if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
@@ -57,7 +57,7 @@ jobs:
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         script: |
-          cd /opt/flask-app
+          cd ~/flask-app
           
           # Build new image
           docker build -t flask-s3-gallery:latest .
@@ -82,9 +82,9 @@ jobs:
         username: ${{ secrets.PRODUCTION_USER }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         script: |
-          # Create app directory
-          mkdir -p /opt/flask-app
-          cd /opt/flask-app
+          # Create app directory in user home
+          mkdir -p ~/flask-app
+          cd ~/flask-app
           
           # Stop existing app
           docker stop flask-app || true
@@ -99,7 +99,7 @@ jobs:
         username: ${{ secrets.PRODUCTION_USER }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
-        target: "/opt/flask-app"
+        target: "flask-app"
 
     - name: Build and run on production
       if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
@@ -109,7 +109,7 @@ jobs:
         username: ${{ secrets.PRODUCTION_USER }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         script: |
-          cd /opt/flask-app
+          cd ~/flask-app
           
           # Build new image
           docker build -t flask-s3-gallery:latest .

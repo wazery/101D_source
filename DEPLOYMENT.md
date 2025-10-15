@@ -32,20 +32,21 @@ sudo apt update
 sudo apt install docker.io -y
 sudo systemctl start docker
 sudo systemctl enable docker
+
+# IMPORTANT: Add user to docker group (no sudo needed for docker commands)
 sudo usermod -aG docker $USER
 
-# Create app directory
-sudo mkdir -p /opt/flask-app
-sudo chown $USER:$USER /opt/flask-app
+# Logout and login again, OR run:
+newgrp docker
 
-# Create environment file (copy from .env.example)
-cd /opt/flask-app
-# The workflow will copy .env.example, then rename it:
-# cp .env.example .env
-# nano .env  # Add your AWS credentials
+# Test Docker works without sudo
+docker --version
+docker ps
 ```
 
-**No Git required!** The GitHub Action copies files directly from the repository.
+**The workflow creates `~/flask-app` directory automatically** - no manual setup needed!
+
+After deployment, your `.env` file should be at `~/flask-app/.env`
 
 ## SSH Key Setup
 
