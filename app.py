@@ -19,6 +19,14 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this')
 
+# Add CORS headers to help with cross-origin issues
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
 # AWS Configuration
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
@@ -62,7 +70,7 @@ def generate_s3_url(bucket_name, key, use_presigned=False):
             return s3_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': bucket_name, 'Key': key},
-                ExpiresIn=3600
+                ExpiresIn=7200  # 2 hours - longer for better user experience
             )
     
     # Public URL format based on region
@@ -123,8 +131,8 @@ def upload_file_to_s3(file, filename):
             }
         )
         
-        # Generate S3 URL (try public first, can switch to presigned if needed)
-        s3_url = generate_s3_url(S3_BUCKET_NAME, unique_filename, use_presigned=False)
+        # Generate S3 URL (use presigned URLs to avoid CORS/bucket policy issues)
+        s3_url = generate_s3_url(S3_BUCKET_NAME, unique_filename, use_presigned=True)
         return True, s3_url
     
     except ClientError as e:
@@ -147,8 +155,8 @@ def list_s3_images():
                 # Only include image files
                 filename = obj['Key']
                 if any(filename.lower().endswith(ext) for ext in ['png', 'jpg', 'jpeg', 'gif', 'webp']):
-                    # Generate S3 URL (switch use_presigned=True if public access doesn't work)
-                    image_url = generate_s3_url(S3_BUCKET_NAME, filename, use_presigned=False)
+                    # Generate S3 URL (use presigned URLs to avoid CORS/bucket policy issues)
+                    image_url = generate_s3_url(S3_BUCKET_NAME, filename, use_presigned=True)
                     
                     images.append({
                         'filename': filename,
