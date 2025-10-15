@@ -46,7 +46,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
-        source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
+        source: "app.py,requirements.txt,Dockerfile,templates/"
         target: "flask-app"
 
     - name: Build and run on staging
@@ -57,12 +57,29 @@ jobs:
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         script: |
+          set -e  # Exit on any error
           cd ~/flask-app
           
+          # Create .env file from GitHub secrets
+          cat > .env << EOF
+          FLASK_ENV=development
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+          EOF
+          
+          # Verify .env file was created
+          echo "✅ Created .env file"
+          ls -la .env
+          
           # Build new image
+          echo "🔨 Building Docker image..."
           docker build -t flask-s3-gallery:latest .
           
           # Run new container
+          echo "🚀 Starting container..."
           docker run -d \
             --name flask-app \
             -p 8080:5000 \
@@ -70,9 +87,15 @@ jobs:
             --restart unless-stopped \
             flask-s3-gallery:latest
           
+          # Verify container is running
+          echo "🔍 Checking container status..."
+          docker ps | grep flask-app
+          
           # Health check
-          sleep 10
-          curl -f http://localhost:8080/health || echo "Health check failed"
+          echo "🏥 Performing health check..."
+          sleep 15
+          curl -f http://localhost:8080/health
+          echo "✅ Staging deployment successful!"
 
     - name: Deploy to Production
       if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
@@ -98,7 +121,7 @@ jobs:
         host: ${{ secrets.PRODUCTION_HOST }}
         username: ${{ secrets.PRODUCTION_USER }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
-        source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
+        source: "app.py,requirements.txt,Dockerfile,templates/"
         target: "flask-app"
 
     - name: Build and run on production
@@ -109,12 +132,29 @@ jobs:
         username: ${{ secrets.PRODUCTION_USER }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         script: |
+          set -e  # Exit on any error
           cd ~/flask-app
           
+          # Create .env file from GitHub secrets
+          cat > .env << EOF
+          FLASK_ENV=production
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+          EOF
+          
+          # Verify .env file was created
+          echo "✅ Created .env file"
+          ls -la .env
+          
           # Build new image
+          echo "🔨 Building Docker image..."
           docker build -t flask-s3-gallery:latest .
           
           # Run new container
+          echo "🚀 Starting container..."
           docker run -d \
             --name flask-app \
             -p 80:5000 \
@@ -122,9 +162,15 @@ jobs:
             --restart unless-stopped \
             flask-s3-gallery:latest
           
+          # Verify container is running
+          echo "🔍 Checking container status..."
+          docker ps | grep flask-app
+          
           # Health check
-          sleep 10
-          curl -f http://localhost/health || echo "Health check failed"
+          echo "🏥 Performing health check..."
+          sleep 15
+          curl -f http://localhost/health
+          echo "✅ Production deployment successful!"
     
     - name: Deployment Complete
       run: |
