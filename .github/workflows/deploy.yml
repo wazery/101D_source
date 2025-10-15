@@ -1,0 +1,137 @@
+name: Simple EC2 Deployment
+
+on:
+  push:
+    branches: [ main, staging ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to Staging
+      if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        script: |
+          # Create app directory
+          mkdir -p /opt/flask-app
+          cd /opt/flask-app
+          
+          # Stop existing app
+          docker stop flask-app || true
+          docker rm flask-app || true
+          docker rmi flask-s3-gallery:latest || true
+      
+    - name: Copy files to staging server
+      if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
+      uses: appleboy/scp-action@v0.1.5
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
+        target: "/opt/flask-app"
+
+    - name: Build and run on staging
+      if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        script: |
+          cd /opt/flask-app
+          
+          # Build new image
+          docker build -t flask-s3-gallery:latest .
+          
+          # Run new container
+          docker run -d \
+            --name flask-app \
+            -p 8080:5000 \
+            --env-file .env \
+            --restart unless-stopped \
+            flask-s3-gallery:latest
+          
+          # Health check
+          sleep 10
+          curl -f http://localhost:8080/health || echo "Health check failed"
+
+    - name: Deploy to Production
+      if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          # Create app directory
+          mkdir -p /opt/flask-app
+          cd /opt/flask-app
+          
+          # Stop existing app
+          docker stop flask-app || true
+          docker rm flask-app || true
+          docker rmi flask-s3-gallery:latest || true
+
+    - name: Copy files to production server
+      if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+      uses: appleboy/scp-action@v0.1.5
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        source: "app.py,requirements.txt,Dockerfile,.env.example,templates/"
+        target: "/opt/flask-app"
+
+    - name: Build and run on production
+      if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          cd /opt/flask-app
+          
+          # Build new image
+          docker build -t flask-s3-gallery:latest .
+          
+          # Run new container
+          docker run -d \
+            --name flask-app \
+            -p 80:5000 \
+            --env-file .env \
+            --restart unless-stopped \
+            flask-s3-gallery:latest
+          
+          # Health check
+          sleep 10
+          curl -f http://localhost/health || echo "Health check failed"
+    
+    - name: Deployment Complete
+      run: |
+        if [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+          echo "🚀 Deployed to STAGING server"
+        elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          echo "🚀 Deployed to PRODUCTION server"
+        else
+          echo "🚀 Manual deployment completed"
+        fi
