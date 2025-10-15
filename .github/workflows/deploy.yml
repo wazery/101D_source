@@ -2,7 +2,7 @@ name: Simple EC2 Deployment
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [ master, staging ]
   workflow_dispatch:
     inputs:
       environment:
@@ -114,7 +114,7 @@ jobs:
           echo "✅ Staging deployment successful!"
 
     - name: Deploy to Production
-      if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+      if: github.ref == 'refs/heads/master' || github.event.inputs.environment == 'production'
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.PRODUCTION_HOST }}

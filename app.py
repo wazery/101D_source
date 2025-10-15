@@ -12,6 +12,10 @@ from werkzeug.utils import secure_filename
 from botocore.exceptions import ClientError, NoCredentialsError
 import uuid
 import io
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -66,7 +70,12 @@ def get_s3_client():
 def generate_s3_url(bucket_name, key, use_presigned=False):
     """Generate S3 URL - serve through Flask to avoid CORS issues"""
     # Always serve through Flask to eliminate CORS/ORB issues
-    return url_for('serve_image', filename=key, _external=True)
+    try:
+        # Try to use url_for if we have a request context
+        return url_for('serve_image', filename=key, _external=True)
+    except RuntimeError:
+        # If no request context, return a relative URL that will work
+        return f"/image/{key}"
 
 def create_bucket_if_not_exists():
     """Create S3 bucket if it doesn't exist"""
@@ -102,13 +111,16 @@ def create_bucket_if_not_exists():
 
 def upload_file_to_s3(file, filename):
     """Upload file to S3 bucket"""
+    logging.info(f"Starting upload for file: {filename}")
     s3_client = get_s3_client()
     if not s3_client:
+        logging.error("S3 client initialization failed")
         return False, "S3 client initialization failed"
     
     try:
         # Generate unique filename
         unique_filename = f"{uuid.uuid4()}_{secure_filename(filename)}"
+        logging.info(f"Generated unique filename: {unique_filename}")
         
         # Upload file
         s3_client.upload_fileobj(
@@ -120,13 +132,15 @@ def upload_file_to_s3(file, filename):
             }
         )
         
-        # Generate S3 URL (serve through Flask to avoid CORS issues)
-        s3_url = generate_s3_url(S3_BUCKET_NAME, unique_filename)
-        return True, s3_url
+        logging.info(f"File uploaded successfully: {unique_filename}")
+        # Return success with the filename (don't generate URL during upload)
+        return True, unique_filename
     
     except ClientError as e:
+        logging.error(f"Upload failed with ClientError: {e}")
         return False, f"Upload failed: {e}"
     except Exception as e:
+        logging.error(f"Upload failed with unexpected error: {e}")
         return False, f"Unexpected error: {e}"
 
 def list_s3_images():
@@ -197,13 +211,18 @@ def upload():
             return redirect(request.url)
         
         # Upload to S3
-        success, result = upload_file_to_s3(file, file.filename)
-        
-        if success:
-            flash(f'File uploaded successfully!', 'success')
-            return redirect(url_for('index'))
-        else:
-            flash(f'Upload failed: {result}', 'error')
+        try:
+            success, result = upload_file_to_s3(file, file.filename)
+            
+            if success:
+                flash(f'File uploaded successfully!', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash(f'Upload failed: {result}', 'error')
+                return redirect(request.url)
+        except Exception as e:
+            print(f"Upload error: {e}")
+            flash(f'Upload error: {str(e)}', 'error')
             return redirect(request.url)
     
     return render_template('upload.html')
